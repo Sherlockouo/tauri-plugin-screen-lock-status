@@ -1,3 +1,6 @@
+// Add tracing to dependencies in Cargo.toml
+use tauri::Emitter;
+use tracing::{info, warn};
 #[cfg(target_os = "linux")]
 use zbus::{blocking::Connection, dbus_proxy};
 
@@ -19,14 +22,14 @@ extern crate core_foundation;
 extern crate core_graphics;
 
 #[cfg(target_os = "macos")]
-use core_foundation::{base::TCFType, base::ToVoid, string::CFString, dictionary::CFDictionary};
+use core_foundation::{base::TCFType, base::ToVoid, dictionary::CFDictionary, string::CFString};
 
 use std::sync::OnceLock;
 use std::thread;
 use std::time::Duration;
 use tauri::{
     plugin::{Builder, TauriPlugin},
-    Manager, Runtime, Window,
+    AppHandle, Runtime,
 };
 
 #[cfg(target_os = "macos")]
@@ -34,7 +37,6 @@ extern "C" {
     fn CGSessionCopyCurrentDictionary() -> core_foundation::dictionary::CFDictionaryRef;
 }
 
-//auto gen code
 #[cfg(target_os = "linux")]
 #[dbus_proxy(
     interface = "org.freedesktop.login1.Session",
@@ -42,7 +44,6 @@ extern "C" {
     default_path = "/org/freedesktop/login1/session/auto"
 )]
 trait Session {
-    /// LockedHint property
     #[dbus_proxy(property)]
     fn locked_hint(&self) -> zbus::Result<bool>;
 }
@@ -63,13 +64,13 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
     }
 }
 
-pub static WINDOW_TAURI: OnceLock<Window> = OnceLock::new();
+pub static WINDOW_TAURI: OnceLock<AppHandle> = OnceLock::new();
 
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     #[cfg(target_os = "windows")]
     {
         thread::spawn(|| unsafe {
-            println!("Start new thread...");
+            info!("Starting new thread for Windows screen lock monitoring...");
             let instance = GetModuleHandleA(None).unwrap();
             debug_assert!(instance.0 != 0);
 
@@ -79,7 +80,6 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
                 hCursor: LoadCursorW(None, IDC_ARROW).unwrap(),
                 hInstance: instance.into(),
                 lpszClassName: window_class,
-
                 style: CS_HREDRAW | CS_VREDRAW,
                 lpfnWndProc: Some(wndproc),
                 ..Default::default()
@@ -104,7 +104,6 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             );
 
             let hwnd = GetActiveWindow();
-
             ShowWindow(*&hwnd, SW_HIDE);
 
             let mut message = MSG::default();
@@ -115,26 +114,26 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
                     DispatchMessageW(&message);
 
                     match message.wParam.0 as u32 {
-                        WTS_SESSION_LOCK => {
-                            let _ = WINDOW_TAURI
-                                .get()
-                                .expect("Error get WINDOW_TAURI")
-                                .emit_all(
+                        WTS_SESSION_LOCK => match WINDOW_TAURI.get() {
+                            Ok(handle) => {
+                                let _ = handle.emit(
                                     "window_screen_lock_status://change_session_status",
                                     "lock",
                                 );
-                            println!("Locked");
-                        }
-                        WTS_SESSION_UNLOCK => {
-                            let _ = WINDOW_TAURI
-                                .get()
-                                .expect("Error get WINDOW_TAURI")
-                                .emit_all(
+                                info!("Screen locked");
+                            }
+                            Err(e) => warn!("Failed to get WINDOW_TAURI handle: {}", e),
+                        },
+                        WTS_SESSION_UNLOCK => match WINDOW_TAURI.get() {
+                            Ok(handle) => {
+                                let _ = handle.emit(
                                     "window_screen_lock_status://change_session_status",
                                     "unlock",
                                 );
-                            println!("Unlocked");
-                        }
+                                info!("Screen unlocked");
+                            }
+                            Err(e) => warn!("Failed to get WINDOW_TAURI handle: {}", e),
+                        },
                         _ => {}
                     }
                 }
@@ -146,43 +145,66 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
     #[cfg(target_os = "linux")]
     {
         thread::spawn(move || {
-            println!("Start new thread...");
+            info!("Starting new thread for Linux screen lock monitoring...");
             let mut flg = false;
             loop {
-                let conn = Connection::system().unwrap();
-                let proxy = SessionProxyBlocking::new(&conn).unwrap();
+                let conn = match Connection::system() {
+                    Ok(conn) => conn,
+                    Err(e) => {
+                        warn!("Failed to establish system connection: {}", e);
+                        break;
+                    }
+                };
+
+                let proxy = match SessionProxyBlocking::new(&conn) {
+                    Ok(proxy) => proxy,
+                    Err(e) => {
+                        warn!("Failed to create session proxy: {}", e);
+                        break;
+                    }
+                };
 
                 let mut property = proxy.receive_locked_hint_changed();
 
                 match property.next() {
                     Some(pro) => {
-                        let current_property = pro.get().unwrap();
+                        let current_property = match pro.get() {
+                            Ok(prop) => prop,
+                            Err(e) => {
+                                warn!("Failed to get property: {}", e);
+                                break;
+                            }
+                        };
+
                         if flg != current_property {
                             flg = current_property;
-
-                            let window = WINDOW_TAURI.get();
-
-                            match window {
-                                Some(_) => {
-                                    if flg == true {
-                                        let _ = window.expect("Error get WINDOW_TAURI").emit_all(
+                            match WINDOW_TAURI.get() {
+                                Some(handle) => {
+                                    if current_property {
+                                        let _ = handle.emit(
                                             "window_screen_lock_status://change_session_status",
                                             "lock",
                                         );
-                                        println!("Locked");
+                                        info!("Screen locked");
                                     } else {
-                                        let _ = window.expect("Error get WINDOW_TAURI").emit_all(
+                                        let _ = handle.emit(
                                             "window_screen_lock_status://change_session_status",
                                             "unlock",
                                         );
-                                        println!("Unlocked");
+                                        info!("Screen unlocked");
                                     }
                                 }
-                                None => break,
+                                None => {
+                                    warn!("Failed to get WINDOW_TAURI handle");
+                                    break;
+                                }
                             }
                         }
                     }
-                    None => break,
+                    None => {
+                        warn!("No property changes received");
+                        break;
+                    }
                 }
                 thread::sleep(Duration::from_millis(1000));
             }
@@ -192,7 +214,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
     #[cfg(target_os = "macos")]
     {
         thread::spawn(move || {
-            println!("Start new thread...");
+            info!("Starting new thread for macOS screen lock monitoring...");
             let mut flg = false;
             loop {
                 unsafe {
@@ -208,25 +230,26 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
                     }
                     if flg != current_session_property {
                         flg = current_session_property;
-                        let window = WINDOW_TAURI.get();
-
-                        match window {
-                            Some(_) => {
-                                if current_session_property == true {
-                                    let _ = window.expect("Error get WINDOW_TAURI").emit_all(
+                        match WINDOW_TAURI.get() {
+                            Some(handle) => {
+                                if current_session_property {
+                                    let _ = handle.emit(
                                         "window_screen_lock_status://change_session_status",
                                         "lock",
                                     );
-                                    println!("Locked");
+                                    info!("Screen locked");
                                 } else {
-                                    let _ = window.expect("Error get WINDOW_TAURI").emit_all(
+                                    let _ = handle.emit(
                                         "window_screen_lock_status://change_session_status",
                                         "unlock",
                                     );
-                                    println!("Unlocked");
+                                    info!("Screen unlocked");
                                 }
                             }
-                            None => break,
+                            None => {
+                                warn!("Failed to get WINDOW_TAURI handle");
+                                break;
+                            }
                         }
                     }
                     thread::sleep(Duration::from_millis(1000));
