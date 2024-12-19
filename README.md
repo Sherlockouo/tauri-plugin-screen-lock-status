@@ -1,6 +1,6 @@
 <h1 align="center" id="rus">Плагин для отслеживания блокировки сессии |<a href="#eng">eng</a>|</h1>
 
-Данный плагин помогает отслеживать статус блокировки для текущей сессии.  Текущая версия плагина подходит для `Tauri 1.5.4`.
+Данный плагин помогает отслеживать статус блокировки для текущей сессии. Текущая версия плагина подходит для `Tauri 1.5.4`.
 
 ## Установка
 
@@ -9,7 +9,7 @@
 
 ```toml
 [dependencies]
-  tauri-plugin-screen-lock-status = { git = "https://github.com/ren40/tauri-plugin-screen-lock-status" }
+  tauri-plugin-screen-lock-status = { git = "https://github.com/Sherlockouo/tauri-plugin-screen-lock-status.git" }
 ```
 
 - [ 3 ] Далее в исполняемом файле `src-tauri/src/main.rc` подключаем:
@@ -27,7 +27,7 @@ fn main() {
 }
 ```
 
- - [ 4 ] Для прослушивания надо подключить следующий код:
+- [ 4 ] Для прослушивания надо подключить следующий код:
 
 ```JS
 import { listen } from '@tauri-apps/api/event'
@@ -41,26 +41,26 @@ await listen("window_screen_lock_status://change_session_status", (result) => {
 
 ## ОС
 
-| Название ОС | Статус |
-| ----------  | ------ |
-| Windows     |  :white_check_mark:   |
-| Linux       |  :white_check_mark:    |
-| MacOS        |  :white_check_mark:      |
-| Android     | :negative_squared_cross_mark:  |
+| Название ОС | Статус                        |
+| ----------- | ----------------------------- |
+| Windows     | :white_check_mark:            |
+| Linux       | :white_check_mark:            |
+| MacOS       | :white_check_mark:            |
+| Android     | :negative_squared_cross_mark: |
 | IOS         | :negative_squared_cross_mark: |
 
 ## Цели
 
-- [X] Реализовать и проверить для MacOS
+- [x] Реализовать и проверить для MacOS
 - [ ] Реализовать и проверить для Android
 - [ ] Реализовать и проверить для IOS
 - [ ] Проверить работоспособность для версии Tauri v2 и выше (При условии что он станет стабильным)
-  
+
 ## Сотрудничество
 
 PR принимаются.
 
------
+---
 
 <h1 align="center" id="eng">Plugin for tracking session blocking |<a href="#rus">rus</a>|</h1>
 
@@ -105,17 +105,17 @@ await listen("window_screen_lock_status://change_session_status", (result) => {
 
 ## OS
 
-| OS name | Status |
-| ----------  | ------ |
-| Windows     |  :white_check_mark:   |
-| Linux       |  :white_check_mark:    |
-| MacOS        |  :white_check_mark:      |
-| Android     | :negative_squared_cross_mark:  |
-| IOS         | :negative_squared_cross_mark: |
+| OS name | Status                        |
+| ------- | ----------------------------- |
+| Windows | :white_check_mark:            |
+| Linux   | :white_check_mark:            |
+| MacOS   | :white_check_mark:            |
+| Android | :negative_squared_cross_mark: |
+| IOS     | :negative_squared_cross_mark: |
 
 ## TODO
 
-- [X] Implement and test for MacOS
+- [x] Implement and test for MacOS
 - [ ] Implement and test for Android
 - [ ] Implement and test for iOS
 - [ ] Check performance for version Tauri v2 and higher (Assuming it becomes stable)
@@ -123,4 +123,4 @@ await listen("window_screen_lock_status://change_session_status", (result) => {
 ## Contributing
 
 PRs accepted.
-  
+
